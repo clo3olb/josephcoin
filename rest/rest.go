@@ -8,6 +8,7 @@ import (
 
 	"github.com/clo3olb/josephcoin/blockchain"
 	"github.com/clo3olb/josephcoin/utils"
+	"github.com/clo3olb/josephcoin/wallet"
 	"github.com/gorilla/mux"
 )
 
@@ -34,6 +35,10 @@ type balanceResponse struct {
 
 type errorResponse struct {
 	ErrorMessage string `json:"errorMessage"`
+}
+
+type myWalletResponse struct {
+	Address string `json:"address"`
 }
 
 type addTxPayload struct {
@@ -126,12 +131,21 @@ func jsonContentTypeMiddleware(next http.Handler) http.Handler {
 func mempool(rw http.ResponseWriter, r *http.Request) {
 	utils.HandleErr(json.NewEncoder(rw).Encode(blockchain.Mempool.Txs))
 }
+func myWallet(rw http.ResponseWriter, r *http.Request) {
+	address := wallet.Wallet().Address
+	// json.NewEncoder(rw).Encode(myWalletResponse{Address: address})
+	json.NewEncoder(rw).Encode(struct {
+		Address string `json:"address"`
+	}{Address: address})
+}
 func transactions(rw http.ResponseWriter, r *http.Request) {
 	var payload addTxPayload
 	utils.HandleErr(json.NewDecoder(r.Body).Decode(&payload))
 	err := blockchain.Mempool.AddTx(payload.To, payload.Amount)
 	if err != nil {
-		json.NewEncoder(rw).Encode(errorResponse{"Not enough funds"})
+		rw.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(rw).Encode(errorResponse{err.Error()})
+		return
 	}
 	rw.WriteHeader(http.StatusCreated)
 }
@@ -147,6 +161,7 @@ func Start(aPort int) {
 	router.HandleFunc("/blocks/{hash:[a-f0-9]+}", block).Methods("GET")
 	router.HandleFunc("/balance/{address}", balance).Methods("GET")
 	router.HandleFunc("/mempool", mempool).Methods("GET")
+	router.HandleFunc("/wallet", myWallet).Methods("GET")
 	router.HandleFunc("/transactions", transactions).Methods("POST")
 
 	fmt.Printf("Listening on http://localhost%s\n", port)
